@@ -1,0 +1,56 @@
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  image:
+    name: maven:3.8.2-openjdk-17
+    pull_policy: if-not-present
+
+  before_script:
+    - echo "setting environment.."
+
+  script:
+    - echo "Compiling the code.."
+    - cd Eventi
+    - mvn clean install
+    - echo "Done compiling."
+#  -DskipTests
+  artifacts:
+    paths:
+      - Eventi/target/*.jar
+
+
+deploy:
+  image:
+    name: alpine
+    pull_policy: if-not-present
+  stage: deploy
+  before_script:
+    - echo "Setting environment..."
+    - apk add sshpass
+    - apk add openssh-client
+    - eval $(ssh-agent -s)
+    - ssh-keygen -b 2048 -t rsa -f /root/.ssh/id_rsa -q -N ""
+    - sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USER@$MACHINE_IP ls
+    - sshpass -p $SSH_PASSWORD ssh-copy-id $SSH_USER@$MACHINE_IP
+  script:
+    - echo "Deploying application..."
+    - scp Eventi/target/*.jar $SSH_USER@$MACHINE_IP:/home/$SSH_USER/EVENTI_BACKEND.jar
+    - echo $(ssh $SSH_USER@$MACHINE_IP 'killall java')
+#    - ssh $SSH_USER@$MACHINE_IP 'rm out.log'
+    - ssh $SSH_USER@$MACHINE_IP 'nohup java -jar EVENTI_BACKEND.jar > out.log 2>&1 &'
+    - echo "Application successfully deployed."
+
+#upload:
+#  image:
+#    name: curlimages/curl:latest
+#    pull_policy: if-not-present
+#  stage: deploy
+#  script:
+#    - 'curl -k'
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'main'
